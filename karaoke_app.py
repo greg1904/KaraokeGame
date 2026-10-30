@@ -404,6 +404,12 @@ class KaraokeApp:
         self.is_recording = False
         pygame.mixer.music.stop()
         
+        # Release the file handle on Windows so karaoke_playback_temp.wav can be overwritten
+        try:
+            pygame.mixer.music.unload()
+        except Exception:
+            pass
+        
         if self.audio_stream:
             self.audio_stream.stop()
             self.audio_stream.close()
