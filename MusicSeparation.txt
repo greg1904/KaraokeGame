@@ -1,0 +1,9 @@
+OpenvinoMusicSeparation:Use_Preset="<Current Settings>"
+FirstTrack:
+TrackClose:
+SelectNone:
+LastTrack:
+SelectTracks:Mode="Set" Track="1"
+SelTrackStartToEnd:
+Amplify:Ratio="0,31260794"
+SelectAll:
