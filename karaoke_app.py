@@ -18,7 +18,7 @@ class CustomLyricsDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Provide Custom Lyrics")
-        self.geometry("550x450")
+        self.geometry("800x800")
         self.transient(parent)
         self.grab_set()
         
