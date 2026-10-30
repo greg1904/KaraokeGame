@@ -23,6 +23,7 @@ class CustomLyricsDialog(tk.Toplevel):
         self.grab_set()
         
         self.lyrics = None
+        self.is_lrc = False
         
         ttk.Label(self, text="Enter or paste your plaintext lyrics below:", font=("Helvetica", 11, "bold")).pack(anchor=tk.W, padx=15, pady=10)
         
@@ -35,6 +36,11 @@ class CustomLyricsDialog(tk.Toplevel):
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.text_widget.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.text_widget.config(yscrollcommand=scrollbar.set)
+        
+        # Checkbox for LRC sync
+        self.is_lrc_var = tk.BooleanVar(value=False)
+        chk_lrc = ttk.Checkbutton(self, text="Pasted text contains LRC time-synced timestamps (e.g. [00:12.34])", variable=self.is_lrc_var)
+        chk_lrc.pack(anchor=tk.W, padx=15, pady=10)
         
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill=tk.X, padx=15, pady=15)
@@ -50,10 +56,12 @@ class CustomLyricsDialog(tk.Toplevel):
         
     def on_submit(self):
         self.lyrics = self.text_widget.get("1.0", tk.END).strip()
+        self.is_lrc = self.is_lrc_var.get()
         self.destroy()
         
     def on_cancel(self):
         self.lyrics = None
+        self.is_lrc = False
         self.destroy()
 
 # --- Audacity Pipe Client for Windows ---
@@ -292,7 +300,11 @@ class KaraokeApp:
                             dialog = CustomLyricsDialog(self.root)
                             if dialog.lyrics is not None:
                                 self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
-                                self.is_synced = False
+                                if dialog.is_lrc:
+                                    self.is_synced = True
+                                    self.parsed_lyrics = parse_lrc(self.lyrics_data)
+                                else:
+                                    self.is_synced = False
                                 self.run_audio_processing()
                             else:
                                 self.create_welcome_screen()
