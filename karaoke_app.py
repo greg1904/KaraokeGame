@@ -11,7 +11,7 @@ import pygame
 import soundfile as sf
 from mutagen import File as MutagenFile
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 
 # --- Audacity Pipe Client for Windows ---
 class AudacityPipeClient:
@@ -223,8 +223,6 @@ class KaraokeApp:
         
         def background_tasks():
             try:
-                # 1. Fetch lyrics
-                self.root.after(0, lambda: prog_label.config(text="Searching lyrics via LRCLIB..."))
                 lyric_res = search_lrclib(self.artist, self.title)
                 lyrics_found = False
                 
@@ -239,34 +237,67 @@ class KaraokeApp:
                         self.is_synced = False
                         lyrics_found = True
                 
-                if not lyrics_found:
-                    self.lyrics_data = "No lyrics found on LRCLIB."
-                    self.is_synced = False
+                prog_win.destroy()
                 
-                # 2. Audacity OpenVINO Separation Automation (Skipped if no lyrics found)
+                if not lyrics_found:
+                    def handle_no_lyrics():
+                        answer = messagebox.askyesno(
+                            "No Lyrics Found", 
+                            "No lyrics were found on LRCLIB.\nWould you like to provide your own lyrics?"
+                        )
+                        if answer:
+                            custom_lyrics = simpledialog.askstring("Custom Lyrics", "Enter or paste your plaintext lyrics:")
+                            self.lyrics_data = custom_lyrics if custom_lyrics else "Manual lyrics provided (blank). Scroll manually."
+                            self.is_synced = False
+                            self.run_audio_processing()
+                        else:
+                            self.create_welcome_screen()
+                    
+                    self.root.after(0, handle_no_lyrics)
+                else:
+                    self.run_audio_processing()
+                    
+            except Exception as e:
+                err_msg = str(e)
+                prog_win.destroy()
+                self.root.after(0, lambda msg=err_msg: messagebox.showerror("Error", f"Failed during processing: {msg}"))
+
+        threading.Thread(target=background_tasks, daemon=True).start()
+
+    def run_audio_processing(self):
+        prog_win = tk.Toplevel(self.root)
+        prog_win.title("Processing Audio...")
+        prog_win.geometry("420x160")
+        prog_win.transient(self.root)
+        prog_win.grab_set()
+        
+        prog_label = ttk.Label(prog_win, text="Waiting for audio conversion & Audacity separation...", font=("Helvetica", 11))
+        prog_label.pack(pady=15)
+        
+        pb = ttk.Progressbar(prog_win, mode="indeterminate", length=350)
+        pb.pack(pady=10)
+        pb.start(10)
+        
+        def audio_task():
+            try:
                 audacity_success = False
                 temp_audacity_output = os.path.abspath(os.path.join(".", "karaoke_backing_export.wav"))
                 
-                if lyrics_found:
-                    self.root.after(0, lambda: prog_label.config(text="Waiting for audio conversion & Audacity separation..."))
-                    try:
-                        client = AudacityPipeClient()
-                        clean_path = self.audio_path.replace("\\", "/")
-                        client.send_command(f'Import2: Filename="{clean_path}"')
-                        client.send_command('SelectAll:')
-                        client.send_command('Macro_MusicSeparation:')
-                        client.send_command('SelectAll:')
-                        out_mix = temp_audacity_output.replace("\\", "/")
-                        client.send_command(f'Export2: Filename="{out_mix}"')
-                        client.send_command('SelectAll:')
-                        client.send_command('RemoveTracks:')
-                        audacity_success = True
-                    except Exception as ex:
-                        print(f"Audacity automation note: {ex}. Using direct audio fallback.")
-                else:
-                    print("No lyrics found on LRCLIB. Skipping Audacity processing.")
+                try:
+                    client = AudacityPipeClient()
+                    clean_path = self.audio_path.replace("\\", "/")
+                    client.send_command(f'Import2: Filename="{clean_path}"')
+                    client.send_command('SelectAll:')
+                    client.send_command('Macro_MusicSeparation:')
+                    client.send_command('SelectAll:')
+                    out_mix = temp_audacity_output.replace("\\", "/")
+                    client.send_command(f'Export2: Filename="{out_mix}"')
+                    client.send_command('SelectAll:')
+                    client.send_command('RemoveTracks:')
+                    audacity_success = True
+                except Exception as ex:
+                    print(f"Audacity automation note: {ex}. Using direct audio fallback.")
                 
-                # 3. Universal Playback Normalizer
                 source_for_playback = temp_audacity_output if (audacity_success and os.path.exists(temp_audacity_output)) else self.audio_path
                 
                 try:
@@ -282,7 +313,7 @@ class KaraokeApp:
                 prog_win.destroy()
                 self.root.after(0, lambda msg=err_msg: messagebox.showerror("Error", f"Failed during processing: {msg}"))
 
-        threading.Thread(target=background_tasks, daemon=True).start()
+        threading.Thread(target=audio_task, daemon=True).start()
 
     def create_karaoke_screen(self):
         self.clear_window()
