@@ -11,7 +11,50 @@ import pygame
 import soundfile as sf
 from mutagen import File as MutagenFile
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import ttk, filedialog, messagebox
+
+# --- Custom Multiline Lyrics Dialog ---
+class CustomLyricsDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Provide Custom Lyrics")
+        self.geometry("550x450")
+        self.transient(parent)
+        self.grab_set()
+        
+        self.lyrics = None
+        
+        ttk.Label(self, text="Enter or paste your plaintext lyrics below:", font=("Helvetica", 11, "bold")).pack(anchor=tk.W, padx=15, pady=10)
+        
+        text_frame = ttk.Frame(self)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=5)
+        
+        self.text_widget = tk.Text(text_frame, wrap=tk.WORD, font=("Helvetica", 12), bg="#1e1e1e", fg="#ffffff", insertbackground="white")
+        self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.text_widget.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.text_widget.config(yscrollcommand=scrollbar.set)
+        
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(fill=tk.X, padx=15, pady=15)
+        
+        btn_submit = ttk.Button(btn_frame, text="Submit Lyrics", command=self.on_submit)
+        btn_submit.pack(side=tk.RIGHT, padx=5)
+        
+        btn_cancel = ttk.Button(btn_frame, text="Cancel", command=self.on_cancel)
+        btn_cancel.pack(side=tk.RIGHT, padx=5)
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        self.wait_window(self)
+        
+    def on_submit(self):
+        self.lyrics = self.text_widget.get("1.0", tk.END).strip()
+        self.destroy()
+        
+    def on_cancel(self):
+        self.lyrics = None
+        self.destroy()
 
 # --- Audacity Pipe Client for Windows ---
 class AudacityPipeClient:
@@ -246,10 +289,13 @@ class KaraokeApp:
                             "No lyrics were found on LRCLIB.\nWould you like to provide your own lyrics?"
                         )
                         if answer:
-                            custom_lyrics = simpledialog.askstring("Custom Lyrics", "Enter or paste your plaintext lyrics:")
-                            self.lyrics_data = custom_lyrics if custom_lyrics else "Manual lyrics provided (blank). Scroll manually."
-                            self.is_synced = False
-                            self.run_audio_processing()
+                            dialog = CustomLyricsDialog(self.root)
+                            if dialog.lyrics is not None:
+                                self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
+                                self.is_synced = False
+                                self.run_audio_processing()
+                            else:
+                                self.create_welcome_screen()
                         else:
                             self.create_welcome_screen()
                     
@@ -404,7 +450,6 @@ class KaraokeApp:
         self.is_recording = False
         pygame.mixer.music.stop()
         
-        # Release the file handle on Windows so karaoke_playback_temp.wav can be overwritten
         try:
             pygame.mixer.music.unload()
         except Exception:
