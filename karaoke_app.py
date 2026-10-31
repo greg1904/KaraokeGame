@@ -305,6 +305,7 @@ class KaraokeApp:
                                     self.parsed_lyrics = parse_lrc(self.lyrics_data)
                                 else:
                                     self.is_synced = False
+                                    self.parsed_lyrics = []
                                 self.run_audio_processing()
                             else:
                                 self.create_welcome_screen()
@@ -392,12 +393,7 @@ class KaraokeApp:
         scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
         self.lyrics_text.config(yscrollcommand=scrollbar.set)
         
-        if self.is_synced:
-            for _, line in self.parsed_lyrics:
-                self.lyrics_text.insert(tk.END, line + "\n")
-        else:
-            self.lyrics_text.insert(tk.END, self.lyrics_data if self.lyrics_data else "No lyrics available.")
-        self.lyrics_text.config(state=tk.DISABLED)
+        self.refresh_lyrics_display()
         
         ctrl_frame = ttk.Frame(main_frame)
         ctrl_frame.pack(fill=tk.X, pady=15)
@@ -405,10 +401,35 @@ class KaraokeApp:
         self.btn_play_start = ttk.Button(ctrl_frame, text="▶ Start Performance", command=self.toggle_playback)
         self.btn_play_start.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         
+        btn_edit_lyrics = ttk.Button(ctrl_frame, text="✏ Edit Lyrics", command=self.open_edit_lyrics_dialog)
+        btn_edit_lyrics.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        
         btn_stop = ttk.Button(ctrl_frame, text="⏹ Stop & Save", command=self.stop_and_save)
         btn_stop.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         
         pygame.mixer.init()
+
+    def refresh_lyrics_display(self):
+        self.lyrics_text.config(state=tk.NORMAL)
+        self.lyrics_text.delete("1.0", tk.END)
+        if self.is_synced:
+            for _, line in self.parsed_lyrics:
+                self.lyrics_text.insert(tk.END, line + "\n")
+        else:
+            self.lyrics_text.insert(tk.END, self.lyrics_data if self.lyrics_data else "No lyrics available.")
+        self.lyrics_text.config(state=tk.DISABLED)
+
+    def open_edit_lyrics_dialog(self):
+        dialog = CustomLyricsDialog(self.root)
+        if dialog.lyrics is not None:
+            self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
+            if dialog.is_lrc:
+                self.is_synced = True
+                self.parsed_lyrics = parse_lrc(self.lyrics_data)
+            else:
+                self.is_synced = False
+                self.parsed_lyrics = []
+            self.refresh_lyrics_display()
 
     def toggle_playback(self):
         if not self.is_playing:
