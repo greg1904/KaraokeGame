@@ -111,18 +111,31 @@ class AudacityPipeClient:
             if from_file:
                 from_file.close()
 
-# --- LRCLIB API Handler ---
-def search_lrclib(artist, title):
+# --- LRCLIB API Handler with 503 Retries & Skip support ---
+def search_lrclib(artist, title, status_callback, skip_event):
     url = "https://lrclib.net/api/search"
     query = f"{artist} - {title}"
     headers = {"User-Agent": "KaraokeStudioApp/1.0 (Python Desktop App)"}
     
-    for attempt in range(10):
+    for attempt in range(1, 11):
+        if skip_event.is_set():
+            return "SKIPPED"
+        
         try:
+            if attempt == 1:
+                status_callback("Searching lyrics via LRCLIB...")
+            else:
+                status_callback(f"LRCLIB service unavailable (503). Retrying ({attempt}/10)...")
+            
             resp = requests.get(url, params={"q": query}, headers=headers, timeout=10)
             if resp.status_code == 503:
-                time.sleep(1)
+                # Wait 2 seconds before retry, checking skip event incrementally
+                for _ in range(20): # 20 * 0.1s = 2 seconds
+                    if skip_event.is_set():
+                        return "SKIPPED"
+                    time.sleep(0.1)
                 continue
+            
             resp.raise_for_status()
             results = resp.json()
             if results:
@@ -134,10 +147,16 @@ def search_lrclib(artist, title):
                         return item
                 return results[0]
             return None
-        except requests.RequestException:
-            if attempt == 9:
-                raise
-            time.sleep(1)
+        except requests.RequestException as e:
+            # If status code was 503 wrapped in exception or similar
+            if "503" in str(e):
+                if attempt < 10:
+                    for _ in range(20):
+                        if skip_event.is_set():
+                            return "SKIPPED"
+                        time.sleep(0.1)
+                    continue
+            raise e
     return None
 
 # --- LRC Parser ---
@@ -201,6 +220,11 @@ class KaraokeApp:
         if self.player_name:
             self.name_entry.insert(0, self.player_name)
             
+        # LRCLIB Fetch Checkbox
+        self.fetch_lrclib_var = tk.BooleanVar(value=True)
+        chk_fetch = ttk.Checkbutton(name_frame, text="Fetch lyrics from lrclib.net", variable=self.fetch_lrclib_var)
+        chk_fetch.pack(anchor=tk.W, pady=8)
+            
         # Audio File Selection
         file_frame = ttk.LabelFrame(frame, text=" Audio Track Selection ", padding=15)
         file_frame.pack(fill=tk.X, pady=15)
@@ -262,24 +286,57 @@ class KaraokeApp:
             return
         self.player_name = name
         
+        # If fetch from lrclib checkbox is unchecked, immediately open manual lyric entry
+        if not self.fetch_lrclib_var.get():
+            dialog = CustomLyricsDialog(self.root)
+            if dialog.lyrics is not None:
+                self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
+                if dialog.is_lrc:
+                    self.is_synced = True
+                    self.parsed_lyrics = parse_lrc(self.lyrics_data)
+                else:
+                    self.is_synced = False
+                    self.parsed_lyrics = []
+                self.run_audio_processing()
+            else:
+                self.create_welcome_screen()
+            return
+        
         prog_win = tk.Toplevel(self.root)
-        prog_win.title("Processing Audio & Lyrics...")
-        prog_win.geometry("420x160")
+        prog_win.title("Fetching Lyrics...")
+        prog_win.geometry("450x185")
         prog_win.transient(self.root)
         prog_win.grab_set()
         
         prog_label = ttk.Label(prog_win, text="Searching lyrics via LRCLIB...", font=("Helvetica", 11))
         prog_label.pack(pady=15)
         
-        pb = ttk.Progressbar(prog_win, mode="indeterminate", length=350)
-        pb.pack(pady=10)
+        pb = ttk.Progressbar(prog_win, mode="indeterminate", length=380)
+        pb.pack(pady=5)
         pb.start(10)
         
+        skip_event = threading.Event()
+        
+        def on_skip():
+            skip_event.set()
+        
+        btn_skip = ttk.Button(prog_win, text="Skip to Manual Entry", command=on_skip)
+        btn_skip.pack(pady=10)
+        
+        def status_callback(text):
+            self.root.after(0, lambda: prog_label.config(text=text))
+
         def background_tasks():
             try:
-                lyric_res = search_lrclib(self.artist, self.title)
-                lyrics_found = False
+                lyric_res = search_lrclib(self.artist, self.title, status_callback, skip_event)
                 
+                self.root.after(0, prog_win.destroy)
+                
+                if skip_event.is_set() or lyric_res == "SKIPPED":
+                    self.root.after(0, self.prompt_manual_lyrics)
+                    return
+                
+                lyrics_found = False
                 if lyric_res:
                     if lyric_res.get("syncedLyrics"):
                         self.lyrics_data = lyric_res["syncedLyrics"]
@@ -291,40 +348,33 @@ class KaraokeApp:
                         self.is_synced = False
                         lyrics_found = True
                 
-                prog_win.destroy()
-                
                 if not lyrics_found:
-                    def handle_no_lyrics():
-                        answer = messagebox.askyesno(
-                            "No Lyrics Found", 
-                            "No lyrics were found on LRCLIB.\nWould you like to provide your own lyrics?"
-                        )
-                        if answer:
-                            dialog = CustomLyricsDialog(self.root)
-                            if dialog.lyrics is not None:
-                                self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
-                                if dialog.is_lrc:
-                                    self.is_synced = True
-                                    self.parsed_lyrics = parse_lrc(self.lyrics_data)
-                                else:
-                                    self.is_synced = False
-                                    self.parsed_lyrics = []
-                                self.run_audio_processing()
-                            else:
-                                self.create_welcome_screen()
-                        else:
-                            self.create_welcome_screen()
-                    
-                    self.root.after(0, handle_no_lyrics)
+                    self.root.after(0, self.prompt_manual_lyrics)
                 else:
-                    self.run_audio_processing()
+                    self.root.after(0, self.run_audio_processing)
                     
             except Exception as e:
                 err_msg = str(e)
-                prog_win.destroy()
-                self.root.after(0, lambda msg=err_msg: messagebox.showerror("Error", f"Failed during processing: {msg}"))
+                self.root.after(0, prog_win.destroy)
+                # Keep the error popup, then immediately fallback to manual entry popup logic
+                self.root.after(0, lambda msg=err_msg: messagebox.showerror("LRCLIB Error", f"Fetch failed: {msg}\nFalling back to manual entry."))
+                self.root.after(0, self.prompt_manual_lyrics)
 
         threading.Thread(target=background_tasks, daemon=True).start()
+
+    def prompt_manual_lyrics(self):
+        dialog = CustomLyricsDialog(self.root)
+        if dialog.lyrics is not None:
+            self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
+            if dialog.is_lrc:
+                self.is_synced = True
+                self.parsed_lyrics = parse_lrc(self.lyrics_data)
+            else:
+                self.is_synced = False
+                self.parsed_lyrics = []
+            self.run_audio_processing()
+        else:
+            self.create_welcome_screen()
 
     def run_audio_processing(self):
         prog_win = tk.Toplevel(self.root)
