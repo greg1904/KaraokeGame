@@ -13,9 +13,9 @@ from mutagen import File as MutagenFile
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# --- Custom Multiline Lyrics Dialog ---
+# --- Custom Multiline Lyrics Dialog with Optional Error Banner ---
 class CustomLyricsDialog(tk.Toplevel):
-    def __init__(self, parent):
+    def __init__(self, parent, error_message=None):
         super().__init__(parent)
         self.title("Provide Custom Lyrics")
         self.geometry("800x800")
@@ -24,6 +24,19 @@ class CustomLyricsDialog(tk.Toplevel):
         
         self.lyrics = None
         self.is_lrc = False
+        
+        # Display error banner if provided so it stays visible during manual entry
+        if error_message:
+            err_frame = ttk.Frame(self, padding=10)
+            err_frame.pack(fill=tk.X, padx=15, pady=(10, 0))
+            err_label = ttk.Label(
+                err_frame, 
+                text=f"⚠️ LRCLIB Fetch Error: {error_message}\nFalling back to manual entry.", 
+                font=("Helvetica", 11, "bold"), 
+                foreground="red",
+                wraplength=750
+            )
+            err_label.pack(anchor=tk.W)
         
         ttk.Label(self, text="Enter or paste your plaintext lyrics below:", font=("Helvetica", 11, "bold")).pack(anchor=tk.W, padx=15, pady=10)
         
@@ -129,8 +142,7 @@ def search_lrclib(artist, title, status_callback, skip_event):
             
             resp = requests.get(url, params={"q": query}, headers=headers, timeout=10)
             if resp.status_code == 503:
-                # Wait 2 seconds before retry, checking skip event incrementally
-                for _ in range(20): # 20 * 0.1s = 2 seconds
+                for _ in range(20): # 20 * 0.1s = 2 seconds wait
                     if skip_event.is_set():
                         return "SKIPPED"
                     time.sleep(0.1)
@@ -148,7 +160,6 @@ def search_lrclib(artist, title, status_callback, skip_event):
                 return results[0]
             return None
         except requests.RequestException as e:
-            # If status code was 503 wrapped in exception or similar
             if "503" in str(e):
                 if attempt < 10:
                     for _ in range(20):
@@ -286,20 +297,8 @@ class KaraokeApp:
             return
         self.player_name = name
         
-        # If fetch from lrclib checkbox is unchecked, immediately open manual lyric entry
         if not self.fetch_lrclib_var.get():
-            dialog = CustomLyricsDialog(self.root)
-            if dialog.lyrics is not None:
-                self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
-                if dialog.is_lrc:
-                    self.is_synced = True
-                    self.parsed_lyrics = parse_lrc(self.lyrics_data)
-                else:
-                    self.is_synced = False
-                    self.parsed_lyrics = []
-                self.run_audio_processing()
-            else:
-                self.create_welcome_screen()
+            self.prompt_manual_lyrics()
             return
         
         prog_win = tk.Toplevel(self.root)
@@ -356,14 +355,13 @@ class KaraokeApp:
             except Exception as e:
                 err_msg = str(e)
                 self.root.after(0, prog_win.destroy)
-                # Keep the error popup, then immediately fallback to manual entry popup logic
-                self.root.after(0, lambda msg=err_msg: messagebox.showerror("LRCLIB Error", f"Fetch failed: {msg}\nFalling back to manual entry."))
-                self.root.after(0, self.prompt_manual_lyrics)
+                # Fallback to manual entry with error message displayed inside the popup window
+                self.root.after(0, lambda msg=err_msg: self.prompt_manual_lyrics(error_message=msg))
 
         threading.Thread(target=background_tasks, daemon=True).start()
 
-    def prompt_manual_lyrics(self):
-        dialog = CustomLyricsDialog(self.root)
+    def prompt_manual_lyrics(self, error_message=None):
+        dialog = CustomLyricsDialog(self.root, error_message=error_message)
         if dialog.lyrics is not None:
             self.lyrics_data = dialog.lyrics if dialog.lyrics else "Manual lyrics provided (blank). Scroll manually."
             if dialog.is_lrc:
@@ -563,7 +561,6 @@ class KaraokeApp:
         self.lyrics_text.config(state=tk.DISABLED)
 
     def stop_and_save(self):
-        # If recording/performance hasn't started yet, return home without saving anything
         if not self.is_playing and not self.is_paused:
             self.create_welcome_screen()
             return
