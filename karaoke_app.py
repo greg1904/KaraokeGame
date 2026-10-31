@@ -479,13 +479,11 @@ class KaraokeApp:
             return
         
         if not self.is_paused:
-            # Pause playback, recording continues in background
             pygame.mixer.music.pause()
             self.is_paused = True
             self.pause_start_time = time.time()
             self.btn_pause.config(text="▶ Resume")
         else:
-            # Resume playback
             pygame.mixer.music.unpause()
             self.total_paused_duration += time.time() - self.pause_start_time
             self.is_paused = False
@@ -506,7 +504,6 @@ class KaraokeApp:
     def highlight_line(self, index):
         self.lyrics_text.config(state=tk.NORMAL)
         self.lyrics_text.tag_remove("highlight", "1.0", tk.END)
-        # Only highlight and auto-scroll if synced and auto-sync checkbox is enabled
         if self.is_synced and self.auto_sync_var.get():
             line_start = f"{index + 1}.0"
             line_end = f"{index + 1}.end"
@@ -516,7 +513,9 @@ class KaraokeApp:
         self.lyrics_text.config(state=tk.DISABLED)
 
     def stop_and_save(self):
+        # If recording/performance hasn't started yet, return home without saving anything
         if not self.is_playing and not self.is_paused:
+            self.create_welcome_screen()
             return
         
         self.is_playing = False
