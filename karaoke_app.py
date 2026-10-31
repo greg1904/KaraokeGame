@@ -169,10 +169,13 @@ class KaraokeApp:
         self.player_name = ""
         
         self.is_playing = False
+        self.is_paused = False
         self.is_recording = False
         self.audio_stream = None
         self.recorded_frames = []
         self.song_start_time = 0
+        self.pause_start_time = 0
+        self.total_paused_duration = 0
         
         self.create_welcome_screen()
 
@@ -399,13 +402,16 @@ class KaraokeApp:
         ctrl_frame.pack(fill=tk.X, pady=15)
         
         self.btn_play_start = ttk.Button(ctrl_frame, text="▶ Start Performance", command=self.toggle_playback)
-        self.btn_play_start.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        self.btn_play_start.pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
+        
+        self.btn_pause = ttk.Button(ctrl_frame, text="⏸ Pause", command=self.toggle_pause, state=tk.DISABLED)
+        self.btn_pause.pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
         
         btn_edit_lyrics = ttk.Button(ctrl_frame, text="✏ Edit Lyrics", command=self.open_edit_lyrics_dialog)
-        btn_edit_lyrics.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        btn_edit_lyrics.pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
         
         btn_stop = ttk.Button(ctrl_frame, text="⏹ Stop & Save", command=self.stop_and_save)
-        btn_stop.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+        btn_stop.pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
         
         pygame.mixer.init()
 
@@ -438,7 +444,11 @@ class KaraokeApp:
             
             self.song_start_time = time.time()
             self.is_playing = True
+            self.is_paused = False
+            self.total_paused_duration = 0
+            
             self.btn_play_start.config(text="▶ Performance in Progress", state=tk.DISABLED)
+            self.btn_pause.config(state=tk.NORMAL)
             
             self.recorded_frames = []
             sample_rate = 44100
@@ -454,15 +464,33 @@ class KaraokeApp:
             if self.is_synced:
                 threading.Thread(target=self.sync_lyrics_loop, daemon=True).start()
 
+    def toggle_pause(self):
+        if not self.is_playing:
+            return
+        
+        if not self.is_paused:
+            # Pause playback, recording continues in background
+            pygame.mixer.music.pause()
+            self.is_paused = True
+            self.pause_start_time = time.time()
+            self.btn_pause.config(text="▶ Resume")
+        else:
+            # Resume playback
+            pygame.mixer.music.unpause()
+            self.total_paused_duration += time.time() - self.pause_start_time
+            self.is_paused = False
+            self.btn_pause.config(text="⏸ Pause")
+
     def sync_lyrics_loop(self):
-        while self.is_playing and pygame.mixer.music.get_busy():
-            elapsed = time.time() - self.song_start_time
-            current_idx = 0
-            for idx, (timestamp, _) in enumerate(self.parsed_lyrics):
-                if elapsed >= timestamp:
-                    current_idx = idx
-            
-            self.root.after(0, lambda idx=current_idx: self.highlight_line(idx))
+        while self.is_playing and (pygame.mixer.music.get_busy() or self.is_paused):
+            if not self.is_paused:
+                elapsed = (time.time() - self.song_start_time) - self.total_paused_duration
+                current_idx = 0
+                for idx, (timestamp, _) in enumerate(self.parsed_lyrics):
+                    if elapsed >= timestamp:
+                        current_idx = idx
+                
+                self.root.after(0, lambda idx=current_idx: self.highlight_line(idx))
             time.sleep(0.1)
 
     def highlight_line(self, index):
@@ -476,10 +504,11 @@ class KaraokeApp:
         self.lyrics_text.config(state=tk.DISABLED)
 
     def stop_and_save(self):
-        if not self.is_playing:
+        if not self.is_playing and not self.is_paused:
             return
         
         self.is_playing = False
+        self.is_paused = False
         self.is_recording = False
         pygame.mixer.music.stop()
         
