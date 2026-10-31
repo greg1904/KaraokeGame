@@ -197,6 +197,7 @@ class KaraokeApp:
         self.is_synced = False
         self.parsed_lyrics = []
         self.player_name = ""
+        self.fetch_lrclib_enabled = True  # Persistent session preference
         
         self.is_playing = False
         self.is_paused = False
@@ -231,8 +232,8 @@ class KaraokeApp:
         if self.player_name:
             self.name_entry.insert(0, self.player_name)
             
-        # LRCLIB Fetch Checkbox
-        self.fetch_lrclib_var = tk.BooleanVar(value=True)
+        # LRCLIB Fetch Checkbox (persists session state)
+        self.fetch_lrclib_var = tk.BooleanVar(value=self.fetch_lrclib_enabled)
         chk_fetch = ttk.Checkbutton(name_frame, text="Fetch lyrics from lrclib.net", variable=self.fetch_lrclib_var)
         chk_fetch.pack(anchor=tk.W, pady=8)
             
@@ -296,8 +297,9 @@ class KaraokeApp:
             messagebox.showerror("Error", "Please enter your singer name for the session.")
             return
         self.player_name = name
+        self.fetch_lrclib_enabled = self.fetch_lrclib_var.get()  # Save user choice for session
         
-        if not self.fetch_lrclib_var.get():
+        if not self.fetch_lrclib_enabled:
             self.prompt_manual_lyrics()
             return
         
@@ -355,7 +357,6 @@ class KaraokeApp:
             except Exception as e:
                 err_msg = str(e)
                 self.root.after(0, prog_win.destroy)
-                # Fallback to manual entry with error message displayed inside the popup window
                 self.root.after(0, lambda msg=err_msg: self.prompt_manual_lyrics(error_message=msg))
 
         threading.Thread(target=background_tasks, daemon=True).start()
