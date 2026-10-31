@@ -4,6 +4,23 @@ mostly Gemini Generated
 
 sadly only runs on Windows - couldn't get the OpenVINO Plugin for Audacity to work on Linux - this is the only incompatability AFAIK
 
+## Features
+
+- Takes in any audio format that audacity supports
+- searches lrclib.net for song with audio file tags (artist - title only)
+- supports providing your own lyrics
+- extracts the vocals using Audacity with OpenVINO Plugin
+- lowers vocals by 10db and mixes back together
+- supports both time synced und unsynced lyrics
+- records your main microphone during playback so you can use your recording later
+- fully offline processing - just the lrclib API is used
+
+## Screenshots
+
+![Home Screen](docs/homescreen.png)
+![Song Screen](docs/songscreen.png)
+![Recording Saved Popup](docs/recordingsaved.png)
+
 ## Installation:
 
 ### Setting up Audacity
