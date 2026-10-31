@@ -83,7 +83,6 @@ class AudacityPipeClient:
         
         for attempt in range(retries):
             try:
-                # Using encoding='utf-8' to support special characters (umlauts, accents, etc.) in filenames
                 to_file = open(self.toname, 'w', encoding='utf-8')
                 from_file = open(self.fromname, 'r', encoding='utf-8')
                 break
@@ -550,8 +549,6 @@ class KaraokeApp:
                 sf.write(wav_path, audio_data, 44100)
                 filepath = wav_path
                 
-            messagebox.showinfo("Saved", f"Karaoke recording successfully saved to:\n{filepath}")
-        
         self.create_welcome_screen()
 
 if __name__ == "__main__":
