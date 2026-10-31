@@ -83,8 +83,9 @@ class AudacityPipeClient:
         
         for attempt in range(retries):
             try:
-                to_file = open(self.toname, 'w', encoding='ascii')
-                from_file = open(self.fromname, 'r', encoding='ascii')
+                # Using encoding='utf-8' to support special characters (umlauts, accents, etc.) in filenames
+                to_file = open(self.toname, 'w', encoding='utf-8')
+                from_file = open(self.fromname, 'r', encoding='utf-8')
                 break
             except OSError:
                 if attempt < retries - 1:
