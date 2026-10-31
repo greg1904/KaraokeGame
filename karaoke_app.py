@@ -389,10 +389,18 @@ class KaraokeApp:
         lyrics_frame = ttk.LabelFrame(main_frame, text=" Lyrics ", padding=10)
         lyrics_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        self.lyrics_text = tk.Text(lyrics_frame, wrap=tk.WORD, font=("Helvetica", 14), bg="#1e1e1e", fg="#ffffff")
+        # Checkbox for Time-Synced Auto-Scrolling
+        self.auto_sync_var = tk.BooleanVar(value=self.is_synced)
+        chk_autosync = ttk.Checkbutton(lyrics_frame, text="Enable Time-Synced Auto-Scrolling", variable=self.auto_sync_var)
+        chk_autosync.pack(anchor=tk.W, pady=(0, 5))
+        
+        text_container = ttk.Frame(lyrics_frame)
+        text_container.pack(fill=tk.BOTH, expand=True)
+        
+        self.lyrics_text = tk.Text(text_container, wrap=tk.WORD, font=("Helvetica", 14), bg="#1e1e1e", fg="#ffffff")
         self.lyrics_text.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
         
-        scrollbar = ttk.Scrollbar(lyrics_frame, orient=tk.VERTICAL, command=self.lyrics_text.yview)
+        scrollbar = ttk.Scrollbar(text_container, orient=tk.VERTICAL, command=self.lyrics_text.yview)
         scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
         self.lyrics_text.config(yscrollcommand=scrollbar.set)
         
@@ -432,9 +440,11 @@ class KaraokeApp:
             if dialog.is_lrc:
                 self.is_synced = True
                 self.parsed_lyrics = parse_lrc(self.lyrics_data)
+                self.auto_sync_var.set(True)
             else:
                 self.is_synced = False
                 self.parsed_lyrics = []
+                self.auto_sync_var.set(False)
             self.refresh_lyrics_display()
 
     def toggle_playback(self):
@@ -496,11 +506,13 @@ class KaraokeApp:
     def highlight_line(self, index):
         self.lyrics_text.config(state=tk.NORMAL)
         self.lyrics_text.tag_remove("highlight", "1.0", tk.END)
-        line_start = f"{index + 1}.0"
-        line_end = f"{index + 1}.end"
-        self.lyrics_text.tag_add("highlight", line_start, line_end)
-        self.lyrics_text.tag_config("highlight", background="#4a90e2", foreground="#ffffff")
-        self.lyrics_text.see(line_start)
+        # Only highlight and auto-scroll if synced and auto-sync checkbox is enabled
+        if self.is_synced and self.auto_sync_var.get():
+            line_start = f"{index + 1}.0"
+            line_end = f"{index + 1}.end"
+            self.lyrics_text.tag_add("highlight", line_start, line_end)
+            self.lyrics_text.tag_config("highlight", background="#4a90e2", foreground="#ffffff")
+            self.lyrics_text.see(line_start)
         self.lyrics_text.config(state=tk.DISABLED)
 
     def stop_and_save(self):
